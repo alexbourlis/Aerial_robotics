@@ -6,6 +6,8 @@ from pid_control import pid_velocity_fixed_height_controller
 from my_control import MyController
 import example
 import time, random
+import work_file
+import follow_curve
 
 # Set 'True' to enable random positions of obstacles and the drone
 enable_random_environment = True #False
@@ -210,7 +212,7 @@ if __name__ == '__main__':
     # Initialize the drone
     drone = CrazyflieInDroneDome()
     my_controller = MyController()
-
+    counter = 0
     # Simulation loops
     for step in range(100000):
 
@@ -221,21 +223,26 @@ if __name__ == '__main__':
         # ---- Select only one of the following control methods ---- #
         #drone.wait_keyboard()
         #control_commands = drone.action_from_keyboard()
-        control_commands = my_controller.step_control(sensor_data)
+        #control_commands = my_controller.step_control(sensor_data)
         #control_commands = example.obstacle_avoidance(sensor_data)
+        control_commands = work_file.path_planning(sensor_data)
+        #control_commands = follow_curve.path_planning(sensor_data)
         #control_commands = example.path_planning(sensor_data)
-        map = example.occupancy_map(sensor_data)
+        #map = example.occupancy_map(sensor_data)
         # ---- end --- #
 
-        #print(sensor_data['range_down'])
-        #print("height : ", sensor_data['range_down']," | ",sensor_data['x_global']," | ",sensor_data['y_global'])
-                #," | pad flag: ",my_controller.pad_flag, " | goal flag: ",my_controller.goal_reached )
-        #print("speed forward : ", sensor_data['v_forward']," | speed left: ",sensor_data['v_left']
+        print("control_commands: ", control_commands)
+        #print("yaw: ", sensor_data['yaw'])
+        #print("setpoints: ", my_controller.setpoints)
+        print("height : ", sensor_data['range_down']," | x: ",sensor_data['x_global']," | y: ",sensor_data['y_global'])
+        #        ," | pad flag: ",my_controller.pad_flag, " | goal flag: ",my_controller.goal_reached )
+        #print("speed forward : ", sensor_data['v_forward']," | speed left: ",sensor_data['v_left'])
         #    ," | ",sensor_data['x_global']," | ",sensor_data['y_global']
         #    ," | pad flag: ",my_controller.pad_flag)
         #print("range front: ",sensor_data['range_front']," | range back: ",sensor_data['range_back'])
         #print("range left: ",sensor_data['range_left']," | range right: ",sensor_data['range_right'])
-        #print(" ")
+        print("time: ", sensor_data['t'])
+        print(" ")
 
         # Update the drone status in simulation
         drone.step(control_commands, sensor_data)
