@@ -171,7 +171,7 @@ def occupancy_map(sensor_data):
     # only plot every Nth time step (comment out if not needed)
     if t % 50 == 0:
         plt.imshow(np.flip(map,1), vmin=-1, vmax=1, cmap='gray', origin='lower') # flip the map to match the coordinate system
-        plt.pause(0.01) #added
+        #plt.pause(0.01) #added
         plt.savefig("map.png")
     t +=1
 

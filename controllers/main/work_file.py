@@ -134,7 +134,7 @@ def obstacle_avoidance(sensor_data,control_command):
 
         elif sensor_data['range_right'] < 0.3:# and sensor_data['v_left'] < -0:
             obstacle_info[O_TYPE] = obst_type['right_obstacle']
-            control_command[1] = 0.2 if sensor_data['range_right'] < 0.14 else 0
+            control_command[1] = min(0.01/(sensor_data['range_right'])**2,0.5) if sensor_data['range_right'] < 0.2 else 0
 
         elif sensor_data['range_left'] < 0.3:# and sensor_data['v_left'] > 0: 
             obstacle_info[O_TYPE] = obst_type['left_obstacle']
@@ -144,3 +144,54 @@ def obstacle_avoidance(sensor_data,control_command):
             obstacle_info[A_DIR] = around_dir['go_straight']
 
         return control_command
+
+def new_obstacle_avoidance(sensor_data,control_command):
+    obst_type = {"No_obstacle": 0,"front_obstacle": 1,"left_obstacle": 2,"right_obstacle": 3}
+    around_dir = {"go_straight": 0,"go_left": 1,"go_right": 2}  #Direction to follow when getting around an obstacle
+    O_TYPE,A_DIR = 0,1  #indices for the obstacle_info array,O_TYPE = obstacle type index | A_DIR = get around direction index
+    OBS_THRESHOLD = 0.3
+    MARGIN = 40+10+5
+    left_dist, right_dist = get_dist_edges(sensor_data)
+    left_range, right_range = sensor_data['range_left'],sensor_data['range_right']
+    if sensor_data['range_front'] < OBS_THRESHOLD or obstacle_info[O_TYPE] == obst_type['front_obstacle']:
+        if (left_dist > MARGIN and left_range > MARGIN) or obstacle_info[A_DIR] == around_dir['go_left']:
+            obstacle_info[A_DIR] = around_dir['go_left']
+            #contourner à gauche
+        if (right_dist > MARGIN and right_range > MARGIN) or obstacle_info[A_DIR] == around_dir['go_right']:
+            obstacle_info[A_DIR] = around_dir['go_right']
+            #contourner à droite
+        else:
+            print("ne pas bouger")
+            # ne pas bouger
+
+def get_dist_edges(sensor_data):
+    pos_x,pos_y = sensor_data['x_global'],sensor_data['y_global']
+    yaw_angle = sensor_data['yaw']
+    pi = np.pi
+    phi = pi/8
+
+    if yaw_angle > -phi or yaw_angle <= phi:                    #Nord
+        left_dist = 3-pos_y
+        right_dist = pos_y
+    elif yaw_angle > -pi/2+phi or yaw_angle <= -phi:            #Nord-Est
+        left_dist = min(3-pos_y,5-pos_x)
+        right_dist = min(pos_y,pos_x)
+    elif yaw_angle > -pi/2-phi or yaw_angle <= -pi/2+phi:       #Est
+        left_dist = 5-pos_x
+        right_dist = pos_x
+    elif yaw_angle > phi or yaw_angle <= pi/2-phi:              #Nord-Ouest
+        left_dist = min(3-pos_y,pos_x)
+        right_dist = min(pos_y,5-pos_x)
+    elif yaw_angle > pi/2-phi or yaw_angle <= pi/2+phi:         #Ouest
+        left_dist = pos_x
+        right_dist = 5-pos_x
+    elif yaw_angle > pi/2+phi or yaw_angle <= pi-phi:           #Sud-Ouest
+        left_dist = min(pos_x,pos_y)
+        right_dist = min(5-pos_x,3-pos_y)
+    elif yaw_angle > -pi+phi or yaw_angle <= -pi/2-phi:         #Sud-Est
+        left_dist = min(5-pos_x,pos_y)
+        right_dist = min(pos_x,3-pos_y)
+    else:                                                       #Sud
+        left_dist = pos_y
+        right_dist = 3-pos_y
+    return left_dist, right_dist

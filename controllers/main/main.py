@@ -8,6 +8,7 @@ import example
 import time, random
 import work_file
 import follow_curve
+import scanner
 
 # Set 'True' to enable random positions of obstacles and the drone
 enable_random_environment = True #False
@@ -225,9 +226,11 @@ if __name__ == '__main__':
         #control_commands = drone.action_from_keyboard()
         #control_commands = my_controller.step_control(sensor_data)
         #control_commands = example.obstacle_avoidance(sensor_data)
-        control_commands = work_file.path_planning(sensor_data)
+        #control_commands = work_file.path_planning(sensor_data)
+        control_commands = scanner.path_planning(sensor_data)
         #control_commands = follow_curve.path_planning(sensor_data)
         #control_commands = example.path_planning(sensor_data)
+        map = scanner.occupancy_map(sensor_data)
         #map = example.occupancy_map(sensor_data)
         # ---- end --- #
 
@@ -239,9 +242,9 @@ if __name__ == '__main__':
         #print("speed forward : ", sensor_data['v_forward']," | speed left: ",sensor_data['v_left'])
         #    ," | ",sensor_data['x_global']," | ",sensor_data['y_global']
         #    ," | pad flag: ",my_controller.pad_flag)
-        #print("range front: ",sensor_data['range_front']," | range back: ",sensor_data['range_back'])
-        #print("range left: ",sensor_data['range_left']," | range right: ",sensor_data['range_right'])
-        print("time: ", sensor_data['t'])
+        print("range front: ",sensor_data['range_front']," | range back: ",sensor_data['range_back'])
+        print("range left: ",sensor_data['range_left']," | range right: ",sensor_data['range_right'])
+        #print("time: ", sensor_data['t'])
         print(" ")
 
         # Update the drone status in simulation
