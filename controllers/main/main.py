@@ -226,11 +226,11 @@ if __name__ == '__main__':
         #control_commands = drone.action_from_keyboard()
         #control_commands = my_controller.step_control(sensor_data)
         #control_commands = example.obstacle_avoidance(sensor_data)
-        #control_commands = work_file.path_planning(sensor_data)
-        control_commands = scanner.path_planning(sensor_data)
+        control_commands = work_file.path_planning(sensor_data)
+        #control_commands = scanner.path_planning(sensor_data)
         #control_commands = follow_curve.path_planning(sensor_data)
         #control_commands = example.path_planning(sensor_data)
-        map = scanner.occupancy_map(sensor_data)
+        #scanner.occupancy_map(sensor_data)
         #map = example.occupancy_map(sensor_data)
         # ---- end --- #
 
@@ -239,7 +239,7 @@ if __name__ == '__main__':
         #print("setpoints: ", my_controller.setpoints)
         print("height : ", sensor_data['range_down']," | x: ",sensor_data['x_global']," | y: ",sensor_data['y_global'])
         #        ," | pad flag: ",my_controller.pad_flag, " | goal flag: ",my_controller.goal_reached )
-        #print("speed forward : ", sensor_data['v_forward']," | speed left: ",sensor_data['v_left'])
+        print("speed forward : ", sensor_data['v_forward']," | speed left: ",sensor_data['v_left'])
         #    ," | ",sensor_data['x_global']," | ",sensor_data['y_global']
         #    ," | pad flag: ",my_controller.pad_flag)
         print("range front: ",sensor_data['range_front']," | range back: ",sensor_data['range_back'])

@@ -118,6 +118,7 @@ def gamma(t,sensor_data):
 	T = 6
 	w = 2*np.pi/T
 	A = 1.3
+	k = 1.5
 	#if t<1: 
 	#	y = sensor_data['y_global']
 	#	x = sensor_data['x_global']
@@ -126,6 +127,6 @@ def gamma(t,sensor_data):
 	if t < 6:#6.88:
 		return [A*np.cos(w*t),-A*np.sin(w*t)]
 	if t < 9:
-		return [1,6-t]
+		return [1,(6-t)*k]
 	
-	return [2-A*np.cos(w*(t-9)),-2-A*np.sin(w*(t-9))] #center vector + cos,sin rebased at time t and set at the good position
+	return [2-A*np.cos(w*(t-9)),-3.7-A*np.sin(w*(t-9))] #center vector + cos,sin rebased at time t and set at the good position

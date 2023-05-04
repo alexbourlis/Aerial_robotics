@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from work_file import vector_orientation
 from numpy import pi
+from math import floor
 
 on_ground = True
 height_desired = 0.5
@@ -14,24 +15,38 @@ take_off_counter = 0
 obstacle_info = [0,0]
 scanning_state = 0    #0 is the scanning start condition
 
+min_x, max_x = 0, 5.0 # meter
+min_y, max_y = 0, 3.0 # meter
+range_max = 2.0 # meter, maximum range of distance sensor
+res_pos = 0.05 # meter (step)
+conf = 1 # certainty given by each measurement
+t = 0 # only for plotting
+map = np.zeros((int((max_x-min_x)/res_pos), int((max_y-min_y)/res_pos))) # 0 = unknown, 1 = free, -1 = occupied
+map_coord = np.zeros((int((max_x-min_x)/res_pos), int((max_y-min_y)/res_pos),2)) # 0 = unknown, 1 = free, -1 = occupied
+
 
 def path_planning(sensor_data):
     
     global on_ground, height_desired, index_current_setpoint, setpoints, take_off_counter
     #TAKE OFF
     if on_ground and sensor_data['range_down'] < 0.49:
-    	return take_off(sensor_data)
+        occupancy_map(sensor_data)
+        return take_off(sensor_data)
     else:
         on_ground = False
-        angle = scanning(pi/4,drone_goal_orientation(sensor_data))
-        #return hover(omega_func2(angle))
-        return command_to_goal(sensor_data,omega_func2(angle))
+
+    occupancy_map(sensor_data)
+    angle = scanning(pi/4,drone_goal_orientation(sensor_data))
+    #return hover(omega_func2(angle))
+    control_command = command_to_goal(sensor_data,omega_func2(angle), np.array(setpoints[index_current_setpoint]))
+    #control_command = obstacle_avoidance(sensor_data,control_command)
+    return control_command
 	
 def take_off(sensor_data):
     # Take off
     global on_ground, height_desired, index_current_setpoint, setpoints, take_off_counter
     seuil = 0.02
-    if take_off_counter > 2:
+    if take_off_counter > 2: #for the first cycle the sensor data is wrong
         #angle = drone_goal_orientation(sensor_data)
         #if abs(angle) >= seuil: omega = np.sign(-angle)#-np.sign(angle)
         #else: omega = 0
@@ -42,16 +57,17 @@ def take_off(sensor_data):
     return hover(omega)
 
 # Calculate the control command based on current goal setpoint
-def command_to_goal(sensor_data,omega):
+def command_to_goal(sensor_data,omega,goal):
     global height_desired, index_current_setpoint, setpoints
     
     theta = sensor_data['yaw']
     M = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])    #MB2I
-    v_goal = np.array(setpoints[index_current_setpoint])                            #goal position vector 
+    v_goal = goal#np.array(setpoints[index_current_setpoint])                            #goal position vector 
     v_drone = np.array([sensor_data['x_global'], sensor_data['y_global']])          #drone position vector
     dir_drone = [np.cos(sensor_data['yaw']),np.sin(sensor_data['yaw'])]             #drone orientation vector v
     dir_goal = v_goal-v_drone                                                       #drone->goal vector       u
-    v_x, v_y = np.linalg.inv(M).dot(dir_goal)                                       #velocity expressed in the body frame
+    print("distance drone goal:", np.linalg.norm(dir_goal))
+    v_x, v_y = np.linalg.inv(M).dot(dir_goal)                #velocity expressed in the body frame
     #preserving proportionality even when the values are clipped
     if v_x > v_y:                                                                           
         ratio = v_y/v_x
@@ -91,7 +107,7 @@ def scanning(theta,alpha):
 	else:
 		if abs(phi-alpha) < seuil:
 			scanning_state +=1
-	print("scanning_state: ",scanning_state," | phi:",phi,"phi-alpha:",phi-alpha)
+	#print("scanning_state: ",scanning_state," | phi:",phi," | phi-alpha:",phi-alpha)
 	return phi-alpha
 
 def drone_goal_orientation(sensor_data):#positive angle means dir drone is left from dir goal
@@ -110,19 +126,22 @@ def omega_func(angle):
 def omega_func2(angle):
     return 2*np.sign(angle)*abs(angle)**0.5
 
-min_x, max_x = 0, 5.0 # meter
-min_y, max_y = 0, 3.0 # meter
-range_max = 2.0 # meter, maximum range of distance sensor
-res_pos = 0.1 # meter (step)
-conf = 0.5 # certainty given by each measurement
-t = 0 # only for plotting
-
-map = np.zeros((int((max_x-min_x)/res_pos), int((max_y-min_y)/res_pos))) # 0 = unknown, 1 = free, -1 = occupied
-
 def occupancy_map(sensor_data):
     global map, t
     pos_x = sensor_data['x_global']
     pos_y = sensor_data['y_global']
+
+    #my stuff
+    goal_x = 3.8
+    goal_y = 0.3
+    ind_px = int(np.round((pos_x - min_x)/res_pos,0))
+    ind_py = int(np.round((pos_y - min_y)/res_pos,0))
+    ind_gx = int(np.round((goal_x - min_x)/res_pos,0))
+    ind_gy = int(np.round((goal_y - min_y)/res_pos,0))
+
+    #p_map = path_map(ind_px, ind_py, ind_gx, ind_gy, np.zeros((int((max_x-min_x)/res_pos), int((max_y-min_y)/res_pos))))
+    #mask = p_map == 0
+
     yaw = sensor_data['yaw']
     
     for j in range(4): # 4 sensors
@@ -150,16 +169,94 @@ def occupancy_map(sensor_data):
                 map[idx_x, idx_y] += conf
             else:
                 map[idx_x, idx_y] -= conf
+                map_coord[idx_x, idx_y] = [(pos_x - min_x + measurement*np.cos(yaw_sensor)),(pos_y - min_y + measurement*np.sin(yaw_sensor))]
                 break
-    
-    map = np.clip(map, -1, 1) # certainty can never be more than 100%
 
+    map = np.clip(map, -1, 1) # certainty can never be more than 100%
+    #map = mask*map+p_map
+    map[ind_px][ind_py]=10
+    #map.T[20] = 5*np.ones((1,int((max_x-min_x)/res_pos)))
     # only plot every Nth time step (comment out if not needed)
     if t % 25 == 0:
-        plt.imshow(np.flip(map,1), vmin=-1, vmax=1, cmap='gray', origin='lower') # flip the map to match the coordinate system
+        plt.imshow(np.flip(map,1),origin='lower') # flip the map to match the coordinate system (cmap='gray', vmin=-1, vmax=1)
         #plt.imshow(map, vmin=-1, vmax=1, cmap='gray', origin='lower')
         #plt.pause(0.01) #added
         plt.savefig("map_scan.png")
     t +=1
 
-    return map
+def search_obstacles(sensor_data):
+    global map, index_current_setpoint, setpoints
+    old_goal = np.array(setpoints[index_current_setpoint])
+    margin = 0.2
+    N = 21
+    pos_x = sensor_data['x_global']
+    pos_y = sensor_data['y_global']
+    ind_px = int(np.round((pos_x - min_x)/res_pos,0))
+    ind_py = int(np.round((pos_y - min_y)/res_pos,0))
+    shortest_dist = np.inf
+    for i in range(N):
+        for j in range(N):
+            if ind_px-floor(N/2)+i>=0 and ind_px-floor(N/2)+i<100 and ind_py-floor(N/2)+j>=0 and ind_py-floor(N/2)+j<60:
+                if map[ind_px-floor(N/2)+i,ind_py-floor(N/2)+j] == -1:
+                    #print("indexes:", [ind_px-floor(N/2)+i,ind_py-floor(N/2)+j]," | map value:",map[ind_px-floor(N/2)+i,ind_py-floor(N/2)+j])
+                    #print("drone indexes:",[ind_px,ind_py])
+                    point = map_coord[ind_px-floor(N/2)+i,ind_py-floor(N/2)+j]
+                    #x = dist_point_to_path(sensor_data,point)
+                    x = np.linalg.norm(point-np.array([sensor_data['x_global'], sensor_data['y_global']])) #distance drone to obstacle
+                    if abs(x) < abs(shortest_dist): 
+                        shortest_dist = x
+                        closest_point = point
+                    #print("point coord:",point," | distance to path:",x)
+
+    if abs(shortest_dist) < margin:
+        if shortest_dist!=0:
+            new_goal = closest_point - np.sign(dist_point_to_path(sensor_data,closest_point))*1.5*margin*unit_vec_per(sensor_data)
+        else:
+            new_goal = closest_point - margin*unit_vec_per(sensor_data)
+    else:
+        new_goal = old_goal
+    print("current goal:", new_goal)
+    return new_goal
+
+def dist_point_to_path(sensor_data,point):
+    point = np.array(point)
+    global index_current_setpoint, setpoints
+
+    v_goal = np.array(setpoints[index_current_setpoint])                            #goal position vector
+    v_drone = np.array([sensor_data['x_global'], sensor_data['y_global']])          #drone position vector
+    dir_goal = v_goal-v_drone                                                       #drone->goal vector
+    dir_point = point-v_drone
+    dist = np.linalg.norm(dir_point-(dir_point.dot(dir_goal)/dir_goal.dot(dir_goal))*dir_goal)
+    return dist*np.sign(vector_orientation(dir_goal,dir_point))
+
+#get the left-oriented unity vector perpendicular to the drone->goal vector
+def unit_vec_per(sensor_data):
+    global index_current_setpoint, setpoints
+    v_goal = np.array(setpoints[index_current_setpoint])                            #goal position vector
+    v_drone = np.array([sensor_data['x_global'], sensor_data['y_global']])          #drone position vector
+    dir_goal = v_goal-v_drone                                                       #drone->goal vector
+    v_per_unit = np.array([-dir_goal[1],dir_goal[0]])/np.linalg.norm(dir_goal)
+    return v_per_unit
+
+
+def path_map(pos_x,pos_y,goal_x,goal_y,map):
+    delta_y,delta_x = goal_y-pos_y,goal_x-pos_x
+    sy = np.sign(delta_y)
+    sx = np.sign(delta_x)
+    delta_y += sy if sy != 0 else 1
+    delta_x += sx if sx != 0 else 1
+    inc = 0 if delta_y%2==0 else 1
+    
+    for i in range(floor(sy*delta_y/2)+inc):
+        for k in range(floor(sx*delta_x/delta_y*sy)):
+            map[pos_x][pos_y] = 5
+            map[goal_x][goal_y] = 5
+            pos_x += 1
+            goal_x -= 1
+        pos_y+=sy
+        goal_y+=sx
+        delta_x = delta_x-2*floor(sx*delta_x/delta_y*sy)
+        delta_y -= sy*2
+
+    return map 
+

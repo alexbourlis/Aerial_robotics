@@ -172,7 +172,15 @@ class MyController():
         theta = sensor_data['yaw']
         M = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]]) #MB2I
         v_goal = np.array(setpoints[self.index_current_setpoint])
-        v_x, v_y = np.clip(np.linalg.inv(M).dot(v_goal-v_drone),-0.5,0.5)
+        v_x, v_y = np.linalg.inv(M).dot(v_goal-v_drone)
+        if v_x > v_y:                                                                           
+            ratio = v_y/v_x
+            v_x = np.clip(v_x,-0.5,0.5)
+            v_y = v_x*ratio
+        elif v_y >= v_x and v_y != 0:
+            ratio = v_x/v_y
+            v_y = np.clip(v_y,-0.5,0.5)
+            v_x = ratio*v_y
         omega = -np.sign(angle)*abs(angle)**0.5
         control_command = [v_x,v_y , omega, height_desired]
         control_command = self.obstacle_avoidance(sensor_data,control_command)
