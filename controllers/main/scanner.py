@@ -10,6 +10,10 @@ height_desired = 0.5
 setpoints = [[-0.0, -0.0], [0.0, -2.0], [2.0, -2.0], [2.0,  -4.0],[-1.0, -2.0],[-1.0, -3.0]]
 delta = 0.3
 setpoints = [[3.5+delta,delta],[3.5+delta, 3-delta], [3.5+3*delta, 3-delta], [3.5+3*delta, delta]]
+goals = []
+perm_list = []
+pro_point = [0,0]
+ind_px,ind_py = 0,0
 index_current_setpoint = 0
 print_flag = True
 take_off_counter = 0
@@ -28,14 +32,16 @@ map_coord = np.zeros((int((max_x-min_x)/res_pos), int((max_y-min_y)/res_pos),2))
 
 def path_planning(sensor_data):
     
-    global on_ground, height_desired, index_current_setpoint, setpoints, take_off_counter
+    global on_ground, height_desired, index_current_setpoint, setpoints, take_off_counter, goals
     #TAKE OFF
     if on_ground and sensor_data['range_down'] < 0.49:
         occupancy_map(sensor_data)
         return take_off(sensor_data)
     else:
         on_ground = False
-
+   
+    goals = create_path(sensor_data)
+    print("goals in path planning: ", goals)
     occupancy_map(sensor_data)
     angle = scanning(pi/4,drone_goal_orientation(sensor_data))
     #return hover(omega_func2(angle))
@@ -141,7 +147,8 @@ def occupancy_map(sensor_data):
     ind_gy = int(np.round((goal_y - min_y)/res_pos,0))
 
     #p_map = path_map(ind_dx, ind_dy, ind_gx, ind_gy, np.zeros((int((max_x-min_x)/res_pos), int((max_y-min_y)/res_pos))))
-    #mask = p_map == 0
+    p_map = path_map2(np.zeros((int((max_x-min_x)/res_pos), int((max_y-min_y)/res_pos))))
+    mask = p_map == 0
 
     yaw = sensor_data['yaw']
     
@@ -174,70 +181,105 @@ def occupancy_map(sensor_data):
                 break
 
     map = np.clip(map, -1, 1) # certainty can never be more than 100%
-    #map = mask*map+p_map
+    show_map = mask*map+p_map
     #map[ind_dx][ind_dy]=10
     #map.T[20] = 5*np.ones((1,int((max_x-min_x)/res_pos)))
     # only plot every Nth time step (comment out if not needed)
     if t % 25 == 0:
-        plt.imshow(np.flip(map,1),origin='lower') # flip the map to match the coordinate system (cmap='gray', vmin=-1, vmax=1)
+        plt.imshow(np.flip(show_map,1),origin='lower') # flip the map to match the coordinate system (cmap='gray', vmin=-1, vmax=1)
         #plt.imshow(map, vmin=-1, vmax=1, cmap='gray', origin='lower')
         #plt.pause(0.01) #added
         plt.savefig("map_scan.png")
     t +=1
 
 def create_path(sensor_data):
-    global map, res_pos
-    s = res_pos*0.49
-    N_prime = 21
+    global map, res_pos, perm_list, pro_point, ind_px, ind_py
+    dist_min = 0.2
+    s = res_pos*0.5
+    N_prime = 11
     pos_x = sensor_data['x_global']
     pos_y = sensor_data['y_global']
-    ind_dx = int(np.round((pos_x - min_x)/res_pos,0))
-    ind_dy = int(np.round((pos_y - min_y)/res_pos,0))
-    perm_list = []
-    var_list = []
+    ind_dx = floor((pos_x - min_x)/res_pos)
+    ind_dy = floor((pos_y - min_y)/res_pos)
     if len(perm_list)==0:
         pro_point = [pos_x,pos_y]
         ind_px, ind_py = ind_dx, ind_dy
     vec_path = np.array([3.5+0.3,0.3]) - np.array(pro_point)
     
-    next_goal = None
-    obstacle = False
     compteur = 0
     N = N_prime - max(abs(ind_px-ind_dx),abs(ind_py-ind_dy))
 
-    while(compteur < N):
-        for n in range(N-compteur):
+    obstacle = False
+    var_list = []
+
+    while(compteur < N): # this loop repeats itself for every new propagation point
+        var_list = []
+        for n in range(N-compteur): # for every perimeter
+            print("propagation point:", pro_point,"in perimeter: ", n+1)
+            obstacle = False
+            new_goal = None
+            ind_new_goal = [0,0]
             compteur += 1
-            k = 2*n+1
+            k = 2*(n+1)+1               # length of the square perimeter 
             best_score = np.inf
             absolut_best_score = np.inf
+            #for every square in the perimeter
             for i in range(k):
                 for j in range(k):
-                    if j == 0 or j == k-1 or i == 0 or i == k-1:
-                        ind_x,ind_y = ind_px-n+i,ind_py-n+j
+                    if j == 0 or j == k-1 or i == 0 or i == k-1: # perimeter points
+                        ind_x,ind_y = ind_px-(n+1)+i,ind_py-(n+1)+j
+                        #print("square: ",[ind_x,ind_y]," in perimeter:", n+1)
                         point = [ind_x*res_pos+s,ind_y*res_pos+s] #center of the square
-                        if vec_path.dot(np.array(pro_point)-np.array(point)) >= 0: 
+                        if vec_path.dot(np.array(point)-np.array(pro_point)) >= 0: 
                             score = norm(dist_point_to_path(pro_point,point))
                             if field_state(ind_x,ind_y) == True:
+                                #print("valid point")
                                 if score < best_score:
                                     new_goal = point
+                                    ind_new_goal = [ind_x,ind_y]
                                     best_score = score
                                     if best_score < absolut_best_score:
                                         absolut_best_score = best_score
                                         obstacle = False
                             else:
+                                #print("obstacle")
                                 if score < absolut_best_score:
                                     absolut_best_score = score
                                     obstacle = True
+            if new_goal == None:
+                print("dead end")
             if obstacle == False:
                 new_goal = np.array(new_goal)-dist_point_to_path(pro_point,new_goal)
                 var_list.append(new_goal.tolist())
             else:
                 var_list.append(new_goal)
-                var_list = adjust_goals(var_list)
+                var_list = adjust_goals(var_list,pro_point)
                 pro_point = new_goal
-                perm_list = (np.concatenate([np.array(perm_list),np.array(var_list)], axis=0)).tolist()
+                ind_px,ind_py = ind_new_goal
+                if len(perm_list)>0:
+                    perm_list = (np.concatenate([np.array(perm_list),np.array(var_list)], axis=0)).tolist()
+                else:
+                    perm_list = var_list
+                break
+        #print("var_list: ", var_list,"perm_list:", perm_list)
 
+    #print("OUT: var_list: ", var_list,"perm_list:", perm_list)
+    if len(perm_list)>0 and len(var_list)>0: 
+        goals = (np.concatenate([np.array(perm_list),np.array(var_list)], axis=0)).tolist()
+    elif len(var_list)>0: 
+        goals = var_list
+    else:
+        goals = perm_list
+
+
+    for i in range(len(goals)):
+        if norm(np.array(goals[0])-np.array([pos_x,pos_y]))<dist_min:
+            goals.pop(0)
+            if len(perm_list)>0: perm_list.pop(0)
+        else:
+            break
+
+    return goals
 
 def adjust_goals(var_list,pro_point):
     Margin = 7
@@ -249,18 +291,19 @@ def adjust_goals(var_list,pro_point):
 
 def field_state(ind_x,ind_y):
     global map
-    k = 9
+    k = 7
     counter = 0
     for i in range(k):
         for j in range(k):
-            if ind_x-floor(k/2)+i >= 0 ind_x-floor(k/2)+i < 100 and ind_y-floor(k/2)+j >= 0 and ind_y-floor(k/2)+j < 60:
+            if ind_x-floor(k/2)+i >= 0 and ind_x-floor(k/2)+i < 100 \
+            and ind_y-floor(k/2)+j >= 0 and ind_y-floor(k/2)+j < 60:
                 if map[ind_x-floor(k/2)+i,ind_y-floor(k/2)+j] != -1:
                     counter += 1
     if counter == k**2:
         return True
     return False
 
-def dist_point_to_path(sensor_data,pro_point,point):
+def dist_point_to_path(pro_point,point):
     point = np.array(point)
     global index_current_setpoint, setpoints
 
@@ -315,6 +358,14 @@ def unit_vec_per(sensor_data):
     dir_goal = v_goal-v_drone                                                       #drone->goal vector
     v_per_unit = np.array([-dir_goal[1],dir_goal[0]])/np.linalg.norm(dir_goal)
     return v_per_unit
+
+def path_map2(map):
+    global goals
+    for i in range(len(goals)):
+        ind_x = floor((goals[i][0] - min_x)/res_pos)
+        ind_y = floor((goals[i][1] - min_y)/res_pos)
+        map[ind_x,ind_y] = 5 
+    return map
 
 
 def path_map(pos_x,pos_y,goal_x,goal_y,map):
