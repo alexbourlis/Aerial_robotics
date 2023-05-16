@@ -1,5 +1,6 @@
 import numpy as np
 from numpy import pi
+from numpy.linalg import norm
 
 on_ground = True
 height_desired = 0.5
@@ -15,24 +16,30 @@ past_height = 0
 land_drone = False
 start_pos = [-1.0,-1.0]
 scanning_state = 0    #0 is the scanning start condition
-
+propagation_counter = 0
 #testing
+period = 0
 
 obstacle_flag = False
+around = False
+
+machin = 0 #another counter
 
 def path_planning(sensor_data):
     
-    global on_ground, height_desired, index_current_setpoint, setpoints, take_off_counter,land_drone,past_height
+    global on_ground, height_desired, index_current_setpoint, setpoints, take_off_counter,land_drone,past_height,around
     #TAKE OFF
     if on_ground and sensor_data['range_down'] < 0.49:
     	return take_off(sensor_data)
     else:
         on_ground = False
 
-    if past_height-sensor_data['range_down']>0.05 or land_drone:
-    	land_drone = True
-    	past_height = sensor_data['range_down']
-    	return landing_drone(sensor_data)
+    #land the drone
+    if (past_height-sensor_data['range_down']>0.05 or land_drone) and around == False:
+        print("land_drone around:", around)
+        land_drone = True
+        past_height = sensor_data['range_down']
+        return landing_drone(sensor_data)
  
     past_height = sensor_data['range_down']    
     # Hover at the final setpoint
@@ -49,7 +56,8 @@ def path_planning(sensor_data):
     #advance to goal taking into account obstacles
     control_command = get_command_to_goal(sensor_data)
     #control_command = obstacle_avoidance(sensor_data,control_command)
-    control_command = old_obstacle_avoidance(sensor_data,control_command)
+    #control_command = old_obstacle_avoidance(sensor_data,control_command)
+    obstacle_scanning(sensor_data)
     return control_command
 
 def landing_drone(sensor_data):
@@ -112,35 +120,72 @@ def get_command_to_goal(sensor_data):
 	    v_x = ratio*v_y
 
 	angle = vector_orientation(dir_goal,dir_drone)									#how well the drone is alligned with the target
-	angle = scanning(pi/16,angle)
+	angle = scanning(pi/30,angle)
 	omega = 2*np.sign(angle)*abs(angle)**0.5		#i put a minus without scanning #square root the angle to have a faster speed for small angles(better reactivity)
 	control_command = [v_x, v_y, omega, height_desired]
 	if print_flag == True: print("distance drone goal (2):", np.linalg.norm(dir_goal))
 	return control_command
 
+furthest_point = 0
+
+def obstacle_scanning(sensor_data):
+    global machin, index_current_setpoint, setpoints,furthest_point
+
+    front_dist = sensor_data['range_front']
+    left_dist = sensor_data ['range_left']
+    yaw = sensor_data['yaw']
+    v_goal = np.array(setpoints[index_current_setpoint])
+    print("machin: ", machin)
+    if machin == 21: 
+        machin = 0
+        print("furthest_point after a scanning period: ", furthest_point)
+    if machin > 0: machin+=1
+    if front_dist< 1:
+        if machin == 0: machin+=1
+        v_drone = np.array([sensor_data ['x_global'],sensor_data['y_global']])
+        v_obst = front_dist*np.array([np.cos(yaw),np.sin(yaw)])
+        vec_path = v_goal-v_drone
+        v_dist = v_obst-(v_obst.dot(vec_path)/vec_path.dot(vec_path))*vec_path
+        angle = vector_orientation(vec_path,v_obst)
+        if norm(v_dist)>abs(furthest_point): furthest_point = np.sign(angle)*norm(v_dist)
+        print("distance: ", np.sign(angle)*norm(v_dist),"furthest_point: ", furthest_point)
+
+def dist_point_to_path(pro_point,point):
+    point = np.array(point)
+    global index_current_setpoint, setpoints
+
+    v_goal = np.array(setoints[index_current_setpoint])                            #goal position vector
+    v_pro_point = np.array(pro_point)                           #propagation point position vector
+    v_point = np.array(point)
+    vec_path = v_goal-v_pro_point                                                      #drone->goal vector
+    dir_point = v_point-v_pro_point
+    v_dist = dir_point-(dir_point.dot(vec_path)/vec_path.dot(vec_path))*vec_path
+    return v_dist
 
 def scanning(theta,alpha):
-	global scanning_state
-	seuil = 0.02
-	scan_states = {'start':0,'goal_+':1,'goal_-':2,'goal_0':3,'end':4}
-	phi = theta
-	if scanning_state == scan_states['goal_-']: phi = -theta
-	if scanning_state == scan_states['goal_0']: phi = 0
-
-	if scanning_state == scan_states['start']:
-		if abs(theta-alpha) < seuil:
-			scanning_state = scan_states['goal_-']
-			phi = -theta
-		else:
-			scanning_state = scan_states['goal_+']
-	elif scanning_state == scan_states['end']:
-		phi = 0
-		scanning_state = scan_states['start']
-	else:
-		if abs(phi-alpha) < seuil:
-			scanning_state +=1
-	#print("scanning_state: ",scanning_state," | phi:",phi," | phi-alpha:",phi-alpha)
-	return phi-alpha
+    global scanning_state,period
+    seuil = 0.02
+    scan_states = {'start':0,'goal_+':1,'goal_-':2,'end':3} #'goal_0':3,
+    phi = theta
+    if scanning_state == scan_states['goal_-']: phi = -theta
+    #if scanning_state == scan_states['goal_0']: phi = 0
+    if scanning_state == scan_states['start']:
+        period = 0
+        if abs(theta-alpha) < seuil:
+        	scanning_state = scan_states['goal_-']
+        	phi = -theta
+        else:
+        	scanning_state = scan_states['goal_+']
+    elif scanning_state == scan_states['end']:
+        print("periode:", period)
+        phi = 0
+        scanning_state = scan_states['start']
+    else:
+        if abs(phi-alpha) < seuil:
+        	scanning_state +=1
+    #print("scanning_state: ",scanning_state," | phi:",phi," | phi-alpha:",phi-alpha)
+    period +=1
+    return phi-alpha
 
 def adjust_drone_orientation(sensor_data):
     global height_desired, index_current_setpoint, setpoints
@@ -187,30 +232,98 @@ def vector_orientation(u,v):
 
         return np.squeeze(angle).tolist()
 
-
 # Obstacle avoidance
-def old_obstacle_avoidance(sensor_data,control_command):
-    global height_desired, obstacle_flag
 
-    if sensor_data['range_front'] < 0.4 or obstacle_flag:
-    	print("obstacle front")
-    	obstacle_flag = True
-    	control_command = [0,-0.1,0,height_desired]
-    # Obstacle avoidance with distance sensors
-    #if sensor_data['range_front'] < 0.4:
-    #    if sensor_data['range_left'] > 1:
-    #        control_command[1] = 0.5
-    #    else:
-    #        control_command[1] = -0.5
-    #    control_command[0] = control_command[0]/2
-    #
-    #if sensor_data['range_left'] < 0.3:
-    #	control_command[1] = -0.5
-    #if sensor_data['range_right'] < 0.3:
-    #	control_command[1] = 0.5
-#
+
+def old_obstacle_avoidance(sensor_data,control_command):
+    global height_desired, obstacle_flag,propagation_counter, around 
+
+    dt = 0.032
+    obstacle_flag = False
+    front_dist = sensor_data['range_front']
+    left_dist = sensor_data	['range_left']
+    speed_front = max(0.1,sensor_data['v_forward'])
+
+    cycles = 20
+    dist = 0.2
+    speed = 2*dist/cycles/dt
+    acc = speed/cycles/dt
+    #speed = 0.5
+    #acc = speed**2/2/dist	
+
+    if front_dist < 0.8 or propagation_counter > 0:
+        around = True
+        if propagation_counter == 0: propagation_counter = 1000
+        #v_x = np.sign(front_dist-0.2)*(abs(speed_front*(front_dist-0.2)))**0.5
+        cycles_prime = 75
+        dist_prime = 0.6
+        speed_prime = 2*dist_prime/cycles_prime/dt  #speed of 0.5
+        acc_prime = speed_prime/cycles_prime/dt
+        N = 1000-propagation_counter
+        v_x = max(0,(speed_prime-acc_prime*N*dt))
+        v_y = 0 if propagation_counter > 200 else -speed
+        omega = 0
+        if front_dist < 0.3 and propagation_counter>200:#around == False:
+            propagation_counter = 1000  
+            v_y = -speed
+            v_x = 0
+
+        if front_dist > 0.8 or propagation_counter <= 200:#around == True:
+            if propagation_counter>200: propagation_counter = 200
+            #around = True
+            if left_dist < 0.5: propagation_counter	= 100
+            #v_y = -speed
+            #v_x = 0 
+            if propagation_counter > 200-cycles:
+                N = 200-propagation_counter
+                v_x = 0
+                v_y = -(speed-acc*N*dt)
+            elif propagation_counter > 100-cycles:
+                N = 100-propagation_counter
+                v_x = min(speed,(speed-acc*N*dt))
+                v_y = 0#(left_dist-0.2) if left_dist < 0.3 else 0
+            else:
+                N = 60-propagation_counter
+                if propagation_counter == 40: propagation_counter = 1
+                v_x = 0
+                v_y = min(speed,(speed-acc*N*dt))
+
+        propagation_counter -= 1
+
+        print("propagation counter:", propagation_counter)
+        #obstacle_flag = True
+        control_command = [v_x,v_y,omega,height_desired]
+
+    if propagation_counter == 0: around = False
+    print("around:", around)
+
     return control_command
 
+def speed_func1(x,centre):
+	speed = 0.5-(0.4/centre**2)*((x-centre)**2)
+	return speed
+def speed_func2(x,centre):
+	speed = 0.5-(0.5/centre**2)*((x-centre)**2)
+	return speed
+def omega_func(angle):
+    return np.sign(angle)*2 if abs(angle)>0.4 else np.sign(angle)*(abs(angle)**0.25)
+
+def omega_func2(angle):
+    return 2*np.sign(angle)*abs(angle)**0.5
+
+# Obstacle avoidance with distance sensors
+#if sensor_data['range_front'] < 0.4:
+#    if sensor_data['range_left'] > 1:
+#        control_command[1] = 0.5
+#    else:
+#        control_command[1] = -0.5
+#    control_command[0] = control_command[0]/2
+#
+#if sensor_data['range_left'] < 0.3:
+#   control_command[1] = -0.5
+#if sensor_data['range_right'] < 0.3:
+#   control_command[1] = 0.5
+#
 
 def obstacle_avoidance(sensor_data,control_command):
         # Obstacle avoidance with distance sensors

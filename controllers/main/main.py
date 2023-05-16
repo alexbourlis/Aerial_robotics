@@ -9,11 +9,13 @@ import time, random
 import work_file
 import follow_curve
 import scanner
+import one_more
+import new_scanner
 
 # Set 'True' to enable random positions of obstacles and the drone
 enable_random_environment = True #False
 # Set seed to replicate the random environment
-random.seed()
+random.seed(1)
 
 # Crazyflie drone class in webots
 class CrazyflieInDroneDome(Supervisor):
@@ -227,7 +229,9 @@ if __name__ == '__main__':
         #control_commands = my_controller.step_control(sensor_data)
         #control_commands = example.obstacle_avoidance(sensor_data)
         #control_commands = work_file.path_planning(sensor_data)
-        control_commands = scanner.path_planning(sensor_data)
+        #control_commands = one_more.main(sensor_data)
+        #control_commands = scanner.path_planning(sensor_data)
+        control_commands = new_scanner.path_planning(sensor_data)
         #control_commands = follow_curve.path_planning(sensor_data)
         #control_commands = example.path_planning(sensor_data)
         #scanner.occupancy_map(sensor_data)
