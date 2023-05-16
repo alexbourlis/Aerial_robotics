@@ -8,7 +8,11 @@ on_ground = True
 height_desired = 0.5
 setpoints = [[-0.0, -0.0], [0.0, -2.0], [2.0, -2.0], [2.0,  -4.0],[-1.0, -2.0],[-1.0, -3.0]]
 delta = 0.3
-setpoints = [[3.5+delta,delta],[3.5+delta, 3-delta], [3.5+3*delta, 3-delta], [3.5+3*delta, delta]]
+setpoints = \
+            [[3.8,0.1],[3.8,0.45],[3.8,0.8],[3.8,1.15],[3.8,1.5],[3.8,1.85],[3.8,2.2],[3.8,2.55],[3.8,2.9]
+            ,[4.1,2.9],[4.1,2.55],[4.1,2.2],[4.1,1.85],[4.1,1.5],[4.1,1.15],[4.1,0.8],[4.1,0.45],[4.1,0.1]
+            ,[4.4,0.1],[4.4,0.45],[4.4,0.8],[4.4,1.15],[4.4,1.5],[4.4,1.85],[4.4,2.2],[4.4,2.55],[4.4,2.9]
+            ,[4.7,2.9],[4.7,2.55],[4.7,2.2],[4.7,1.85],[4.7,1.5],[4.7,1.15],[4.7,0.8],[4.7,0.45],[4.7,0.1]]
 goals = []
 perm_list = []
 pro_point = [0,0]
@@ -40,11 +44,9 @@ def path_planning(sensor_data):
     else:
         on_ground = False
    
-    #goals = create_path(sensor_data)
-    #print("goals in path planning: ", goals)
     occupancy_map(sensor_data)
     new_goals,actual_map = create_path2(sensor_data)
-    #new_goals = setpoints[index_current_setpoint]
+    #new_goals = [setpoints[index_current_setpoint]]
     vec_goal_drone,angle_goal_drone = drone_goal_orientation(sensor_data,index_current_setpoint)
     omega = omega_func2(scanning(pi/4,angle_goal_drone))
     speed = min(0.2,norm(vec_goal_drone))
@@ -57,7 +59,11 @@ def path_planning(sensor_data):
     #velocity_i = velocity_clipper(vec_goal_drone)
     v_x,v_y = I2B(sensor_data,velocity_i)
     control_command = [v_x,v_y,omega,height_desired]
+    if(norm(vec_goal_drone)<0.6):
+        index_current_setpoint += 1
     #control_command = obstacle_avoidance(sensor_data,control_command)
+    print("distance to goal: ", norm(vec_goal_drone))
+
     return control_command
 	
 def take_off(sensor_data):
@@ -117,10 +123,10 @@ def scanning(theta,alpha):
 	return phi-alpha
 
 def create_path2(sensor_data):
-    global map, map_past_pos,t
+    global map, map_past_pos,t,setpoints,index_current_setpoint
     list1 = map.copy()
-    mask = map_past_pos == 9
-    list1[mask] = 9
+    mask = map_past_pos == 10
+    list1[mask] = 10
 
     #starting position
     pos_x = sensor_data['x_global']
@@ -128,113 +134,183 @@ def create_path2(sensor_data):
     ind_dx = floor((pos_x - min_x)/res_pos)
     ind_dy = floor((pos_y - min_y)/res_pos)
     start = [ind_dx,ind_dy]
-    list1[start[0],start[1]] = 9
+    list1[start[0],start[1]] = 10
 
     #goal
     g_x,g_y = setpoints[index_current_setpoint]
     ind_gx = floor((g_x - min_x)/res_pos)
     ind_gy = floor((g_y - min_y)/res_pos)
     goal = [ind_gx,ind_gy]
-    list1[goal[0],goal[1]] = 5
+    list1[goal[0],goal[1]] = 11
 
     #Radius of research and length of zone of reasearch
     R = 1
     L = 50 
 
     #creating the path
-    #moving the goal if needed
-    rg = 2 # radius of obstacle free goal
-    while (map[max(goal[0]-rg,0):goal[0]+rg+1,max(goal[1]-rg,0):goal[1]+rg+1] == -1).sum() != 0:
-        direction = 3/2-goal[1]
-        mask = list1 == 9
-        list1 = map.copy()
-        list1[mask]=9
-        goal[1]=goal[1]+1 if direction > 0 else goal[1]-1
-        list1[goal[0],goal[1]] = 5
-        print("this while")
-    
+
     # list of the indexes for points with value -1 (list of obstacles indexes)
     u = np.where(list1==-1)
     v = np.vstack((u[0],u[1])).T    
-    # labeling the non-allowed blocks with 7
-    r = 3 #radius of non allowed blocks
+    # labeling the non-allowed blocks
+    r1 = 1 #radius of non allowed blocks
+    r2 = 2
+    r3 = 3
     for i,p in enumerate(v):
-        mask = list1[max(p[0]-r,0):p[0]+r+1,max(p[1]-r,0):p[1]+r+1] !=-1
-        list1[max(p[0]-r,0):p[0]+r+1,max(p[1]-r,0):p[1]+r+1] = mask*7\
-         + (~mask)*list1[max(p[0]-r,0):p[0]+r+1,max(p[1]-r,0):p[1]+r+1]
+        #premiere couche
+        mask0 = list1[max(p[0]-r1,0):p[0]+r1+1,max(p[1]-r1,0):p[1]+r1+1] > -1
+        mask1 = list1[max(p[0]-r1,0):p[0]+r1+1,max(p[1]-r1,0):p[1]+r1+1] < 10
+        mask1 = mask1 & mask0
+        list1[max(p[0]-r1,0):p[0]+r1+1,max(p[1]-r1,0):p[1]+r1+1] = mask1*4\
+         + (~mask1)*list1[max(p[0]-r1,0):p[0]+r1+1,max(p[1]-r1,0):p[1]+r1+1]
 
+        #2eme couche
+        mask0 = list1[max(p[0]-r2,0):p[0]+r2+1,max(p[1]-r2,0):p[1]+r2+1] > -1
+        mask1 = list1[max(p[0]-r2,0):p[0]+r2+1,max(p[1]-r2,0):p[1]+r2+1] < 4
+        mask1 = mask1 & mask0
+        list1[max(p[0]-r2,0):p[0]+r2+1,max(p[1]-r2,0):p[1]+r2+1] = mask1*3\
+         + (~mask1)*list1[max(p[0]-r2,0):p[0]+r2+1,max(p[1]-r2,0):p[1]+r2+1]
+
+        #3eme couche
+        mask0 = list1[max(p[0]-r3,0):p[0]+r3+1,max(p[1]-r3,0):p[1]+r3+1] > -1
+        mask1 = list1[max(p[0]-r3,0):p[0]+r3+1,max(p[1]-r3,0):p[1]+r3+1] < 3
+        mask1 = mask1 & mask0
+        list1[max(p[0]-r3,0):p[0]+r3+1,max(p[1]-r3,0):p[1]+r3+1] = mask1*2\
+         + (~mask1)*list1[max(p[0]-r3,0):p[0]+r3+1,max(p[1]-r3,0):p[1]+r3+1]
+
+    #moving the goal if needed
+    rg = 2 # radius of obstacle free goal
+    region = list1[max(goal[0]-rg,0):goal[0]+rg+1,max(goal[1]-rg,0):goal[1]+rg+1]
+    #if t>400:
+    #    print("region around goal:", region)
+    while ((region == -1)|(region == 4)|(region == 3)|(region == 2)).sum() != 0:
+        print("goal close to obstacle")
+        list1[goal[0],goal[1]] = 2
+        index_current_setpoint += 1
+        g_x,g_y = setpoints[index_current_setpoint]
+        ind_gx = floor((g_x - min_x)/res_pos)
+        ind_gy = floor((g_y - min_y)/res_pos)
+        goal = [ind_gx,ind_gy]
+        list1[goal[0],goal[1]] = 11
+        region = list1[max(goal[0]-rg,0):goal[0]+rg+1,max(goal[1]-rg,0):goal[1]+rg+1]
+    #    direction = 3/2-goal[1]
+    #    mask = list1 == 10
+    #    list1 = map.copy()
+    #    list1[mask]=10
+    #    goal[1]=goal[1]+1 if direction > 0 else goal[1]-1
+    #    list1[goal[0],goal[1]] = 5
+    #    print("this while")
+    
     chain = []
     reference = start
     propagation_point = start
     i = 0
     for i in range(L):
         #print("the main while")
-        # mask:(2R+1)x(2R+1) surrounding array with the allowed places
+        #
         lower_bound_x,upper_bound_x= max(reference[0]-R,0),reference[0]+R+1
         lower_bound_y,upper_bound_y= max(reference[1]-R,0),reference[1]+R+1
-        mask = (list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y] == 1)\
-             | (list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y] == 0)
-        non_mask = (list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y] == 7)\
-                 | (list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y] == -1) 
-        # if we find a square with value 5 it means we have found the goal
-        if (list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y] == 5).sum() != 0:
+        region = list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y].copy()
+        if (region == 11).sum() != 0:
             #if reference == start:
             print("breaking if")
             if ((start[0]-np.array(goal)[0])**2+(start[1]-np.array(goal)[1])**2)**0.5 <= 8**0.5:
                 print("exception") 
                 raise Goal_reached
             break
-    
-        #allowed_points contains the list of coordinates of allowed places, if statement to verify for dead ends
-        a = np.where(mask==True)[0]
-        b = np.where(mask==True)[1]
-        a2 = np.where(non_mask==True)[0]
-        b2 = np.where(non_mask==True)[1]
-        allowed_points = np.vstack((a,b)).T + np.clip(np.array(reference)-R,0,np.inf).astype(int)   #-R to center the values around the reference point
-        non_allowed_points = np.vstack((a2,b2)).T + np.clip(np.array(reference)-R,0,np.inf).astype(int)
-        #print(" ")
-        #print("allowed_points before centering",np.vstack((a,b)).T )
-        #print("NON allowed_points before centering",np.vstack((a2,b2)).T )
-        #print("la zone", list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y]) 
-        #print("OUTSIDE allowed_points:", allowed_points.T," and non_allowed_points: ", non_allowed_points.T)
-        #print("OUTSIDE propagation:", propagation_point, " start point: ", start)
-        if len(allowed_points) != 0:
-            #print("normal management")
-            #allowed_points -= [min(0,allowed_points.T[0].min()), min(0,allowed_points.T[1].min())] #adapt to the border
-            #distance = ((goal[0]-allowed_points.T[0])**2+(goal[1]-allowed_points.T[1])**2)**0.5
-            #print("allowed_points-np.array(propagation_point)", (allowed_points-np.array(propagation_point)).T)
-            angle_allowed = vector_orientation2(np.array(goal)-np.array(propagation_point),allowed_points-np.array(propagation_point))
-            #print("angle allowed", angle_allowed.T)
-            index_min = np.where(abs(angle_allowed)==abs(angle_allowed).min())[0][0]
-            #index_min = np.where(distance==distance.min())[0][0]
-            reference = allowed_points[index_min].tolist()
-            chain.append(reference)
-            list1[reference[0],reference[1]] = 2
 
-            if len(non_allowed_points) != 0:#If the best next point is an obstacle we change the propagation point
-                
-                #non_allowed_points -= [min(0,non_allowed_points.T[0].min()), min(0,non_allowed_points.T[1].min())]
-                non_allowed_angle = vector_orientation2(np.array(goal)-np.array(propagation_point),non_allowed_points-np.array(propagation_point))
-                #print(" non allowed_points", non_allowed_points," propagation_point", propagation_point,"non_allowed_angle", non_allowed_angle)
-                if abs(non_allowed_angle).min()<abs(angle_allowed).min():
-                    propagation_point = reference
-                #print(" ")
-            
-        else:#dead end management
-            print("dead_end management")
-            if len(chain) != 0:
-                chain.pop(-1)
-                list1[reference[0],reference[1]] = 7 # 7 stands for non allowed block
-                reference = chain[-1]
-            else:
-                print("to be handled") #when chain is empty, which means we are close to the goal
+        mask = ((region != -1) & (region < 5))
+        x_coord,y_coord = np.where(region == region[mask].min())
+        allowed_points = np.vstack((x_coord,y_coord)).T + np.clip(np.array(reference)-R,0,np.inf).astype(int)   #-R to center the values around the reference point
+        x_coord,y_coord = np.where(mask == True)
+        all_points = np.vstack((x_coord,y_coord)).T + np.clip(np.array(reference)-R,0,np.inf).astype(int)
+
+        #print("allowed_points:\n", allowed_points, " all_points:\n ", all_points)
+        allowed_angles = vector_orientation2(np.array(goal)-np.array(propagation_point),allowed_points-np.array(propagation_point))
+        all_angles = vector_orientation2(np.array(goal)-np.array(propagation_point),all_points-np.array(propagation_point))
+        if abs(all_angles).min()<abs(allowed_angles).min():#if my actual reference point needs to be the new propagation  point
+            allowed_angles = vector_orientation2(np.array(goal)-np.array(reference),allowed_points-np.array(reference))
+            propagation_point = reference
+        index_min = np.where(abs(allowed_angles)==abs(allowed_angles).min())[0][0]
+        reference = allowed_points[index_min].tolist()
+        chain.append(reference)
+        list1[reference[0],reference[1]] = 5
+
+        #if t > 329:
+        #    print("region: ", region , " and mask: ", mask)
+        #    print("allowed_points:\n", allowed_points, " all_points:\n ", all_points)
+        #    print("allowed_angles:\n", allowed_angles, " all_angles:\n ", all_angles)
+        #    print("propagation_point:", propagation_point)
+                    
+
+        # mask:(2R+1)x(2R+1) surrounding array with the allowed places
+        #lower_bound_x,upper_bound_x= max(reference[0]-R,0),reference[0]+R+1
+        #lower_bound_y,upper_bound_y= max(reference[1]-R,0),reference[1]+R+1
+        #mask = (list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y] == 1)\
+        #     | (list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y] == 0)
+        #non_mask = (list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y] == 7)\
+        #         | (list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y] == -1) 
+        ## if we find a square with value 5 it means we have found the goal
+        #if (list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y] == 11).sum() != 0:
+        #    #if reference == start:
+        #    print("breaking if")
+        #    if ((start[0]-np.array(goal)[0])**2+(start[1]-np.array(goal)[1])**2)**0.5 <= 8**0.5:
+        #        print("exception") 
+        #        raise Goal_reached
+        #    break
+        #
+        ##allowed_points contains the list of coordinates of allowed places, if statement to verify for dead ends
+        #a = np.where(mask==True)[0]
+        #b = np.where(mask==True)[1]
+        #a2 = np.where(non_mask==True)[0]
+        #b2 = np.where(non_mask==True)[1]
+        #allowed_points = np.vstack((a,b)).T + np.clip(np.array(reference)-R,0,np.inf).astype(int)   #-R to center the values around the reference point
+        #non_allowed_points = np.vstack((a2,b2)).T + np.clip(np.array(reference)-R,0,np.inf).astype(int)
+        ##print(" ")
+        ##print("allowed_points before centering",np.vstack((a,b)).T )
+        ##print("NON allowed_points before centering",np.vstack((a2,b2)).T )
+        ##print("la zone", list1[lower_bound_x:upper_bound_x,lower_bound_y:upper_bound_y]) 
+        ##print("OUTSIDE allowed_points:", allowed_points.T," and non_allowed_points: ", non_allowed_points.T)
+        ##print("OUTSIDE propagation:", propagation_point, " start point: ", start)
+        #if len(allowed_points) != 0:
+        #    #print("normal management")
+        #    #allowed_points -= [min(0,allowed_points.T[0].min()), min(0,allowed_points.T[1].min())] #adapt to the border
+        #    #distance = ((goal[0]-allowed_points.T[0])**2+(goal[1]-allowed_points.T[1])**2)**0.5
+        #    #print("allowed_points-np.array(propagation_point)", (allowed_points-np.array(propagation_point)).T)
+        #    angle_allowed = vector_orientation2(np.array(goal)-np.array(propagation_point),allowed_points-np.array(propagation_point))
+        #    #print("angle allowed", angle_allowed.T)
+        #    index_min = np.where(abs(angle_allowed)==abs(angle_allowed).min())[0][0]
+        #    #index_min = np.where(distance==distance.min())[0][0]
+        #    reference = allowed_points[index_min].tolist()
+        #    chain.append(reference)
+        #    list1[reference[0],reference[1]] = 2
+        #    
+        #    if len(non_allowed_points) != 0:#If the best next point is an obstacle we change the propagation point
+        #        
+        #        #non_allowed_points -= [min(0,non_allowed_points.T[0].min()), min(0,non_allowed_points.T[1].min())]
+        #        non_allowed_angle = vector_orientation2(np.array(goal)-np.array(propagation_point),non_allowed_points-np.array(propagation_point))
+        #        #print(" non allowed_points", non_allowed_points," propagation_point", propagation_point,"non_allowed_angle", non_allowed_angle)
+        #        if abs(non_allowed_angle).min()<abs(angle_allowed).min():
+        #            propagation_point = reference
+        #        #print(" ")
+        #    
+        #else:#dead end management
+        #    print("dead_end management")
+        #    if len(chain) != 0:
+        #        chain.pop(-1)
+        #        list1[reference[0],reference[1]] = 7 # 7 stands for non allowed block
+        #        reference = chain[-1]
+        #    else:
+        #        print("to be handled") #when chain is empty, which means we are close to the goal
     
         #print(" ")
         #i = (abs(np.array(start)-np.array(reference))).max()
         #print("i:", i)
-        if t % 25 == 0:
-            plt.imshow(list1,cmap='plasma')
-            plt.pause(0.05)
+        #if t % 25 == 0:
+        #if t>329:
+        #    plt.imshow(list1,cmap='plasma')
+        #    plt.savefig("map_scan.png")
+        #    plt.pause(0.05)
     
     #à gérer en dehors de la fonction
     distance = ((start[0]-np.array(chain).T[0])**2+(start[1]-np.array(chain).T[1])**2)**0.5
@@ -247,12 +323,13 @@ def create_path2(sensor_data):
     #plt.pause(0.05)
 
     #list1[start[0],start[1]] = 9  #may be redundant
-    mask = list1 == 9
-    map_past_pos[mask] = 9
+    mask = list1 == 10
+    map_past_pos[mask] = 10
     #list1[np.array(chain).T[0],np.array(chain).T[1]]=0  #empty the chain points from the list1
     #list1[chain[0][0],chain[0][1]] = 9
 
-    if t % 25 == 0:
+    if t % 25 == 0:# or t>673:# (t>600 and (t % 1 == 0)):
+        print(t)
         plt.imshow(np.flip(list1,1),origin='lower',cmap='plasma') # flip the map to match the coordinate system (cmap='gray', vmin=-1, vmax=1)
         #plt.imshow(map, vmin=-1, vmax=1, cmap='gray', origin='lower')
         #plt.pause(0.01) #added
@@ -276,10 +353,10 @@ def drone_goal_orientation(sensor_data,index_current_setpoint):#positive angle m
     return dist_goal,angle   #dist_goal is a vector
 
 def vector_orientation2(u,v):
-    angle = np.zeros((v.shape[0],1))
     u = np.array(u).reshape((1,2))
-    u_prime = np.array([[-u[0][1],u[0][0]]])
+    u_prime = np.array([[-u[0][1],u[0][0]]]) 
     v = np.array(v)
+    angle = np.zeros((v.shape[0],1))
     det_uv = v.dot(u_prime.T)
     scal_prod = v.dot(u.T)
 
@@ -318,12 +395,12 @@ def occupancy_map(sensor_data):
     pos_y = sensor_data['y_global']
 
     #my stuff
-    goal_x = 3.8
-    goal_y = 0.3
-    ind_dx = int(np.round((pos_x - min_x)/res_pos,0))
-    ind_dy = int(np.round((pos_y - min_y)/res_pos,0))
-    ind_gx = int(np.round((goal_x - min_x)/res_pos,0))
-    ind_gy = int(np.round((goal_y - min_y)/res_pos,0))
+    #goal_x = 3.8
+    #goal_y = 0.3
+    #ind_dx = int(np.round((pos_x - min_x)/res_pos,0))
+    #ind_dy = int(np.round((pos_y - min_y)/res_pos,0))
+    #ind_gx = int(np.round((goal_x - min_x)/res_pos,0))
+    #ind_gy = int(np.round((goal_y - min_y)/res_pos,0))
 
     #p_map = path_map(ind_dx, ind_dy, ind_gx, ind_gy, np.zeros((int((max_x-min_x)/res_pos), int((max_y-min_y)/res_pos))))
     #p_map = path_map2(np.zeros((int((max_x-min_x)/res_pos), int((max_y-min_y)/res_pos))))
@@ -359,7 +436,7 @@ def occupancy_map(sensor_data):
                 map_coord[idx_x, idx_y] = [(pos_x - min_x + measurement*np.cos(yaw_sensor)),(pos_y - min_y + measurement*np.sin(yaw_sensor))]
                 break
 
-    map = np.clip(map, -1, 1) # certainty can never be more than 100%
+    map = np.clip(map, -1, 0) # certainty can never be more than 100%
     #show_map = map.copy()#mask*map+p_map
     #map[ind_dx][ind_dy]=10
     #map.T[20] = 5*np.ones((1,int((max_x-min_x)/res_pos)))

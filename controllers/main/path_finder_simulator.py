@@ -71,7 +71,8 @@ try:
         # labeling the non-allowed blocks with 7
         r = 1 #radius of non allowed blocks
         for i,p in enumerate(v):
-            mask = list1[max(p[0]-r,0):p[0]+r+1,max(p[1]-r,0):p[1]+r+1] !=-1
+            mask = list1[max(p[0]-r,0):p[0]+r+1,max(p[1]-r,0):p[1]+r+1] > -1
+            print("mask", mask)
             list1[max(p[0]-r,0):p[0]+r+1,max(p[1]-r,0):p[1]+r+1] = mask*7\
              + (~mask)*list1[max(p[0]-r,0):p[0]+r+1,max(p[1]-r,0):p[1]+r+1]
 
@@ -101,7 +102,7 @@ try:
                 #print("angles:", abs(angle)==abs(angle).min())
                 #index_min = np.where(distance==distance.min())[0][0]
                 index_min = np.where(abs(angle)==abs(angle).min())[0][0]
-                print("angle",angle," surrounding_points", surrounding_points,"goal",goal,"reference",reference)
+                #print("angle",angle," surrounding_points", surrounding_points,"goal",goal,"reference",reference)
                 reference = surrounding_points[index_min].tolist()
                 chain.append(reference)
                 list1[reference[0],reference[1]] = 2
